@@ -7,10 +7,10 @@ export default {
   },
   body: {
     fontSize: '1.6rem',
-    // fontFamily: 'body',
     overflowX: 'hidden',
-
-    // color: 'white',
-    // background: 'bg.primary',
+    color: 'text.primary',
+    bg: 'bg.primary',
+    margin: 0,
+    padding: 0,
   },
 }

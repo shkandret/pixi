@@ -70,7 +70,6 @@ export function PixiCanvas({ scene, width = 800, height = 600 }: PixiCanvasProps
         appRef.current = null
       }
 
-      // Очищаем DOM на случай, если canvas уже был вставлен
       while (container.firstChild) {
         container.removeChild(container.firstChild)
       }
