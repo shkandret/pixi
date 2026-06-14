@@ -10,12 +10,14 @@ export class GemView extends Container {
   private highlightGraphics: Graphics
   private isSelected: boolean = false
   private pulseTick?: (ticker: any) => void
+  private cellSize: number
 
-  constructor(id: string, type: number, app: Application) {
+  constructor(id: string, type: number, app: Application, cellSize: number) {
     super()
     this.id = id
     this.type = type
     this.app = app
+    this.cellSize = cellSize
 
     this.shadowGraphics = new Graphics()
     this.gemGraphics = new Graphics()
@@ -73,7 +75,7 @@ export class GemView extends Container {
   }
 
   private draw() {
-    const size = GAME_SETTINGS.cellSize
+    const size = this.cellSize
     const color = GAME_SETTINGS.colors[this.type - 1] || 0xFFFFFF
     const radius = size * 0.38
 

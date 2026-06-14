@@ -11,14 +11,26 @@ export interface LevelConfig {
 }
 
 export interface GameSettings {
-  cellSize: number
   animSpeed: number // Transition speed in ms
   fallSpeed: number // Falling animation duration in ms
   colors: number[] // Colors for gem types 1 to 6
 }
 
+/** Target board area in pixels — cells adapt to fill this */
+export const BOARD_TARGET_SIZE = 600
+
+/** Extra padding around the board for the PixiJS frame */
+export const CANVAS_PADDING = 24
+
+/** Fixed canvas dimensions */
+export const CANVAS_SIZE = BOARD_TARGET_SIZE + CANVAS_PADDING
+
+/** Computes adaptive cellSize so the board fills the target area */
+export function computeCellSize(rows: number, cols: number): number {
+  return Math.floor(Math.min(BOARD_TARGET_SIZE / cols, BOARD_TARGET_SIZE / rows))
+}
+
 export const GAME_SETTINGS: GameSettings = {
-  cellSize: 75,
   animSpeed: 200,
   fallSpeed: 250,
   colors: [

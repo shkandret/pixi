@@ -1,17 +1,18 @@
 import { Container, Application } from 'pixi.js'
 import { GemView } from '../entities/GemView'
-import { GAME_SETTINGS } from '../config'
 
 /**
  * Container layer that holds and manages all visual GemViews.
  */
 export class GemsLayer extends Container {
   private app: Application
+  private cellSize: number
   private gemViewsMap = new Map<string, GemView>()
 
-  constructor(app: Application) {
+  constructor(app: Application, cellSize: number) {
     super()
     this.app = app
+    this.cellSize = cellSize
   }
 
   public getGemView(id: string): GemView | undefined {
@@ -22,13 +23,12 @@ export class GemsLayer extends Container {
    * Spawns a new gem view at a starting row (can be negative for dropping in).
    */
   public spawnGem(id: string, type: number, _targetRow: number, col: number, startRow: number): GemView {
-    const cellSize = GAME_SETTINGS.cellSize
-    const halfCell = cellSize / 2
+    const halfCell = this.cellSize / 2
 
-    const gemView = new GemView(id, type, this.app)
-    gemView.x = col * cellSize + halfCell
-    gemView.y = startRow * cellSize + halfCell
-    
+    const gemView = new GemView(id, type, this.app, this.cellSize)
+    gemView.x = col * this.cellSize + halfCell
+    gemView.y = startRow * this.cellSize + halfCell
+
     this.addChild(gemView)
     this.gemViewsMap.set(id, gemView)
 
@@ -50,9 +50,8 @@ export class GemsLayer extends Container {
    * Converts local coordinates inside this layer to board grid coordinates.
    */
   public getGridCoords(x: number, y: number): { row: number; col: number } | null {
-    const cellSize = GAME_SETTINGS.cellSize
-    const col = Math.floor(x / cellSize)
-    const row = Math.floor(y / cellSize)
+    const col = Math.floor(x / this.cellSize)
+    const row = Math.floor(y / this.cellSize)
     return { row, col }
   }
 
@@ -60,11 +59,10 @@ export class GemsLayer extends Container {
    * Converts board grid coordinates to local screen position (x, y) centered on the cell.
    */
   public getScreenCoords(row: number, col: number): { x: number; y: number } {
-    const cellSize = GAME_SETTINGS.cellSize
-    const halfCell = cellSize / 2
+    const halfCell = this.cellSize / 2
     return {
-      x: col * cellSize + halfCell,
-      y: row * cellSize + halfCell,
+      x: col * this.cellSize + halfCell,
+      y: row * this.cellSize + halfCell,
     }
   }
 

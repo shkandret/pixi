@@ -40,7 +40,11 @@ export const colors = {
     glass: { value: 'rgba(20, 20, 35, 0.6)' },
     stage: { value: 'rgba(15, 15, 27, 0.95)' },
     purpleGlow: { value: 'rgba(170, 59, 255, 0.3)' },
+    purpleHover: { value: 'rgba(170, 59, 255, 0.15)' },
     whiteSubtle: { value: 'rgba(255, 255, 255, 0.08)' },
+    overlay: { value: 'rgba(10, 10, 20, 0.9)' },
+    overlaySuccess: { value: 'rgba(10, 22, 18, 0.92)' },
+    hudHighlight: { value: 'rgba(255, 255, 255, 0.03)' },
   },
 }
 
@@ -50,6 +54,10 @@ export const semanticColors = {
     secondary: { value: '{colors.brand.dark.800}' },
     panel: { value: '{colors.translucent.glass}' },
     stage: { value: '{colors.translucent.stage}' },
+    overlay: { value: '{colors.translucent.overlay}' },
+    overlaySuccess: { value: '{colors.translucent.overlaySuccess}' },
+    purpleHover: { value: '{colors.translucent.purpleHover}' },
+    hudHighlight: { value: '{colors.translucent.hudHighlight}' },
   },
   text: {
     primary: { value: '{colors.neutral.white}' },

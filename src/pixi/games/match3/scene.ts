@@ -4,7 +4,7 @@ import { Board } from './entities/Board'
 import { createBoardLayer } from './layers/boardLayer'
 import { GemsLayer } from './layers/gemsLayer'
 import { InputSystem } from './systems/inputSystem'
-import { GAME_SETTINGS, LEVELS } from './config'
+import { computeCellSize, GAME_SETTINGS, LEVELS } from './config'
 import { useGameStore } from '@/stores/gameStore'
 
 let unsubscribeFromStore: (() => void) | null = null
@@ -39,19 +39,18 @@ export const match3Scene: SceneDescriptor = {
 
       const config = LEVELS[levelNumber] || LEVELS[1]
 
-      useGameStore.getState().initLevelState(config.id, config.movesLimit, config.targetScore)
-
       board = new Board(config)
 
-      const boardWidth = config.cols * GAME_SETTINGS.cellSize
-      const boardHeight = config.rows * GAME_SETTINGS.cellSize
+      const cellSize = computeCellSize(config.rows, config.cols)
+      const boardWidth = config.cols * cellSize
+      const boardHeight = config.rows * cellSize
       boardContainer.x = (app.screen.width - boardWidth) / 2
       boardContainer.y = (app.screen.height - boardHeight) / 2
 
-      boardLayer = createBoardLayer(config.rows, config.cols)
+      boardLayer = createBoardLayer(config.rows, config.cols, cellSize)
       boardContainer.addChild(boardLayer)
 
-      gemsLayer = new GemsLayer(app)
+      gemsLayer = new GemsLayer(app, cellSize)
       boardContainer.addChild(gemsLayer)
       currentGemsLayer = gemsLayer
 

@@ -24,7 +24,7 @@ export function Match3Overlay({
       <Flex
         position="absolute"
         inset={0}
-        bg="rgba(10, 10, 20, 0.9)"
+        bg="bg.overlay"
         direction="column"
         align="center"
         justify="center"
@@ -65,7 +65,7 @@ export function Match3Overlay({
       <Flex
         position="absolute"
         inset={0}
-        bg="rgba(10, 22, 18, 0.92)"
+        bg="bg.overlaySuccess"
         direction="column"
         align="center"
         justify="center"

@@ -81,7 +81,6 @@ export function PixiCanvas({ scene, width = 800, height = 600 }: PixiCanvasProps
       ref={containerRef}
       width={`${width}px`}
       height={`${height}px`}
-      borderRadius="lg"
       overflow="hidden"
     />
   )

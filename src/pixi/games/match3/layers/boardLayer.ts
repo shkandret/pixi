@@ -1,9 +1,7 @@
 import { Container, Graphics } from 'pixi.js'
-import { GAME_SETTINGS } from '../config'
 
-export function createBoardLayer(rows: number, cols: number): Container {
+export function createBoardLayer(rows: number, cols: number, cellSize: number): Container {
   const container = new Container()
-  const cellSize = GAME_SETTINGS.cellSize
   const halfCell = cellSize / 2
 
   const frame = new Graphics()
