@@ -1,0 +1,18 @@
+/* Переключатель игр — только в dev-сборке. */
+.devSwitcher {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  z-index: 10;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font: 12px system-ui, sans-serif;
+  opacity: 0.6;
+}
+
+.devSwitcher:hover {
+  opacity: 1;
+}

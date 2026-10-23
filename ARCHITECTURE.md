@@ -1,264 +1,168 @@
-# Архитектура проекта: React + PixiJS
+# Архитектура: идея и обоснование
 
-## Структура папок
+> Для кого: для человека, который решает, «как это устроено и почему именно так».
+> Как работать с кодом по шагам — в [CLAUDE.md](CLAUDE.md).
+
+## Коротко
 
 ```
-src/
-├── app/
-│   └── router.tsx                # Конфигурация маршрутов
-│
-├── components/
-│   └── PixiCanvas/
-│       └── index.tsx             # Переиспользуемый React-компонент для Pixi-сцен
-│
-├── pages/
-│   ├── HomePage.tsx              # /
-│   ├── TestPage.tsx              # /test
-│   └── GamePage.tsx              # /game
-│
-├── pixi/
-│   ├── shared/                   # Общее для ВСЕХ игр
-│   │   ├── types.ts              # SceneDescriptor, SceneContext
-│   │   └── index.ts              # Barrel-экспорт
-│   │
-│   └── games/                    # Каждая игра — изолированный модуль
-│       ├── test/                 # Игра: test (пример)
-│       │   ├── scene.ts          # SceneDescriptor — точка входа сцены
-│       │   ├── entities/         # Сущности этой игры
-│       │   ├── systems/          # Системы этой игры
-│       │   ├── layers/           # Слои этой игры
-│       │   ├── assets/           # Ассеты этой игры
-│       │   └── index.ts          # Barrel — экспортирует сцену наружу
-│       │
-│       ├── snake/                # Игра: snake (пример)
-│       │   ├── scene.ts
-│       │   ├── entities/
-│       │   │   ├── Snake.ts
-│       │   │   └── Food.ts
-│       │   ├── systems/
-│       │   │   └── movementSystem.ts
-│       │   ├── assets/
-│       │   │   └── manifest.ts   # Манифест ассетов для этой игры
-│       │   └── index.ts
-│       │
-│       └── ...                   # Другие игры
-│
-├── stores/
-│   └── gameStore.ts              # Zustand — мост между React и Pixi
-│
-└── theme/                        # Chakra UI тема
+App (выбор игры)
+ └─ <GameHost game={...}>          ← React, единственный компонент, знающий про Pixi. Живёт всегда.
+     ├─ Engine                     ← чистый TS: Pixi Application, цикл, вьюпорт, очередь жизненного цикла
+     │   └─ запущенная игра (одна)
+     │       ├─ AssetService       ← манифест → бандлы, неймспейс по game.id, выгрузка при остановке
+     │       └─ SceneManager       ← одна активная сцена + экран загрузки между ними
+     │           └─ Scene          ← меню / геймплей / магазин…  (root: Container, update, fixedUpdate, resize)
+     └─ game.ui (React)            ← HUD, меню паузы, попапы — поверх канваса
 ```
+
+**В контейнер передаётся не сцена, а игра** (`GameDefinition`). Игра — это набор сцен, манифест ассетов, вьюпорт и UI.
+Загрузчик — не сцена игры, а *состояние перехода* между сценами. Ассеты — не сцена, а *декларация*: сцена
+говорит «мне нужен бандл `game`», а движок решает, когда и с каким прогрессом его грузить.
 
 ---
 
-## Принцип изоляции игр
+## 0. Pixi — хороший выбор?
 
-Каждая игра — **самодостаточный модуль** в `pixi/games/<gameName>/`. Она содержит:
+**Да, для твоих жанров — хороший.** С оговоркой: Pixi — это *рендерер*, а не движок. Сцены, загрузку,
+цикл с фиксированным шагом, вьюпорт, паузу, сохранения пришлось бы писать самому — именно это и сделано
+в `src/engine` (~1000 строк, половина — комментарии). Дальше ты пишешь только игры.
 
-- **Свои** сцены, сущности, системы, слои
-- **Свои** ассеты (загружаются только когда игра активна)
-- **Один** barrel-файл `index.ts`, экспортирующий `SceneDescriptor`
+| Жанр | Подходит? | Что добавить |
+|---|---|---|
+| Vampire Survivors | Отлично. Pixi очень быстро рисует тысячи спрайтов. Сам Vampire Survivors изначально сделан на HTML5 (Phaser) + Electron. | Атлас спрайтов, `ParticleContainer` для толп, пул объектов, spatial hash для коллизий. |
+| Инкременталки | Отлично, но почти всё — UI. Его правильно делать на React (DOM), Pixi — для «сочных» эффектов. | Логика в чистом TS (`logic/`), оффлайн-прогресс по `Date.now()`, частые автосохранения. |
+| Plinko / Suika | Хорошо. | Физика: `matter-js` (проще всего, большинство клонов Suika на нём) или `planck.js` (стабильнее стопки). Шаг физики — в `fixedUpdate`. |
 
-```
-pixi/games/snake/        ← всё про змейку живёт здесь
-pixi/games/tetris/       ← всё про тетрис живёт здесь
-```
+**Pixi vs Phaser.** Phaser даёт сцены/физику/загрузчик из коробки, но тащит свою архитектуру и плохо
+дружит с React-UI. Pixi быстрее и легче, а недостающий «движковый» слой у нас теперь есть, причём
+под наши нужды. Для UI-тяжёлых игр (инкременталки) связка Pixi + React заметно удобнее Phaser.
 
-> Игра A **не импортирует** ничего из игры B. Ассеты одной игры не загружаются другой.
+**Платформы:**
+- **Windows .exe → Electron.** Норм. Альтернатива — Tauri (установщик ~10 МБ вместо ~100 МБ), но WebView2
+  на старых Windows ведёт себя менее предсказуемо, чем встроенный Chromium. Начинай с Electron.
+- **Телефон → Capacitor.** Да.
+- **Expo — нет.** Expo — это React Native: там нет DOM и браузерного WebGL-канваса, Pixi там не работает.
+  Единственный путь — WebView внутри Expo, а это и есть Capacitor, только хуже.
 
-Общие утилиты и типы — в `pixi/shared/`.
-
----
-
-## PixiCanvas — единая точка рендеринга
-
-Компонент `<PixiCanvas>` — обёртка над `pixi.js Application`. Он:
-
-- Создаёт `Application` при mount, уничтожает при unmount
-- Принимает `SceneDescriptor` и вызывает `setup()` для инициализации
-- **Никогда** не рендерится параллельно в двух местах
-
-```tsx
-import { PixiCanvas } from '@/components/PixiCanvas'
-import { testScene } from '@/pixi/games/test'
-
-function TestPage() {
-  return <PixiCanvas scene={testScene} width={800} height={600} />
-}
-```
+**Next.js → Vite.** Next — фреймворк для сайтов с сервером (SSR, роутинг, серверные компоненты). Игре
+ничего из этого не нужно, а мешает многое: `'use client'` везде, `window is not defined`, статический экспорт
+с особенностями путей под `file://`. Capacitor и Electron хотят просто папку `dist/` с `index.html` —
+это ровно то, что делает Vite. Старый код лежит в `legacy-next/` (вне сборки), его можно удалить.
 
 ---
 
-## SceneDescriptor — описание сцены
+## 1. Твоя идея с `PixiGameContainer` — разбор
 
-Каждая сцена — объект с `setup()`, который получает `SceneContext` и возвращает корневой `Container`:
+**Что было верно:**
+- В моменте живёт ровно одна игра → один долгоживущий хост с одним канвасом. Да, это правильно: WebGL-контекст
+  дорогой, браузеры ограничивают их число (~16), пересоздавать его на каждую игру не нужно.
+- Хост переиспользуемый, а игра в него «вставляется». Да.
 
-```ts
-// pixi/games/myGame/scene.ts
-import { Container, Graphics } from 'pixi.js'
-import type { SceneDescriptor } from '@/pixi/shared'
-
-export const myGameScene: SceneDescriptor = {
-  setup({ app }) {
-    const root = new Container()
-
-    const bg = new Graphics()
-      .roundRect(0, 0, app.screen.width, app.screen.height, 0)
-      .fill({ color: 0x1a1a2e })
-    root.addChild(bg)
-
-    app.ticker.add((ticker) => {
-      // игровой цикл
-    })
-
-    return root
-  },
-
-  cleanup({ app }) {
-    // очистка подписок, таймеров и т.д.
-  },
-}
-```
+**Что было не так:**
+1. **Уровень абстракции.** Передавалась функция `(app) => void`, т.е. вся игра целиком, и она называлась сценой.
+   В итоге «сцена» сама грузила ассеты, сама вешала `app.ticker.add`, сама писала в `app.stage` — и никто
+   не мог её корректно остановить. Теперь: хост принимает **игру**, игра состоит из **сцен**, у сцены есть
+   **жизненный цикл**, который вызывает движок.
+2. **Загрузчик — не сцена игры.** Если сделать «сцену загрузки» обычной сценой игры, каждая игра будет
+   копировать логику «загрузи X, покажи прогресс, перейди в Y». Здесь сцена только *объявляет*
+   `bundles = ['game']`, а `SceneManager` при переходе сам: убирает старую сцену → показывает
+   экран загрузки (дефолтный или свой у игры) → грузит бандлы и `scene.load()` → запускает новую сцену.
+   Экран загрузки технически тоже `Scene` (`LoadingScene`), но *системная*, и игра может его подменить.
+3. **Ассеты с бэкенда / тяжёлые локальные** ложатся в эту же схему без изменений:
+   - манифест может быть функцией: `assets: () => fetch('/api/manifest').then(r => r.json())`;
+   - `src` в манифесте — любой URL (локальный `assets/...` или CDN);
+   - данные уровня с сервера — `async load(params)` у сцены, идёт под тем же экраном загрузки;
+   - тяжёлое качается заранее: `backgroundBundles: ['game']` — пока игрок в меню.
+4. **Баги старого контейнера** (исправлены в `Engine`/`GameHost`):
+   - `await app.init()` асинхронный, а cleanup эффекта синхронный → в React StrictMode cleanup проходил
+     до init, `appRef` был `null`, приложение не уничтожалось, в DOM оказывалось два канваса;
+   - `scene(app)` — промис, который никто не ждал: ошибка загрузки ассетов терялась молча;
+   - `app.ticker.add` внутри игр без отписки, фильтры на `app.stage` — утечки при смене игры;
+   - глобальные `let overlay`, `const fishes = []` на уровне модуля — второй запуск игры видел мусор первого.
 
 ---
 
-## Слои (layers) внутри игры
+## 2. Слои и ответственность
 
-Слои — `Container`-ы, которые упорядочивают визуальные элементы сцены. Каждая игра хранит свои слои:
+| Слой | Где | Знает о | Не знает о |
+|---|---|---|---|
+| App | `src/App.tsx` | реестре игр | Pixi |
+| GameHost | `src/engine/react/` | Engine, `game.ui` | конкретных играх |
+| Engine | `src/engine/Engine.ts` | Pixi, SceneManager, платформе | React, играх |
+| SceneManager | `src/engine/scene/` | сценах, ассетах | что именно делает сцена |
+| Scene | `src/games/<id>/scenes/` | `ctx`, своём сторе, logic | React, других играх, `app.stage` |
+| logic | `src/games/<id>/logic/` | ничего, кроме себя | Pixi, React, движка |
+| store | `src/games/<id>/store.ts` | logic | Pixi |
+| UI | `src/games/<id>/ui/` | стор игры, `useEngine` | Pixi-объектах |
 
-```ts
-// pixi/games/snake/layers/backgroundLayer.ts
-import { Container, Graphics } from 'pixi.js'
-import type { Application } from 'pixi.js'
+Границы проверяет ESLint (`no-restricted-imports` в `eslint.config.js`): движок не может импортировать игры,
+игры — внутренности движка и друг друга, `logic/` — Pixi/React/движок.
 
-export function createBackgroundLayer(app: Application): Container {
-  const layer = new Container()
-  const bg = new Graphics()
-    .roundRect(0, 0, app.screen.width, app.screen.height, 0)
-    .fill({ color: 0x0f0f23 })
-  layer.addChild(bg)
-  return layer
-}
-```
-
-Использование в сцене:
-
-```ts
-// pixi/games/snake/scene.ts
-setup({ app }) {
-  const root = new Container()
-  root.addChild(createBackgroundLayer(app))  // слой 0: фон
-  root.addChild(createGameLayer(app))        // слой 1: игровые объекты
-  root.addChild(createParticleLayer(app))    // слой 2: частицы
-  return root
-}
-```
-
----
-
-## Ассеты — ленивая загрузка per-game
-
-Ассеты загружаются **только при запуске конкретной игры**, внутри `setup()`:
-
-```ts
-// pixi/games/snake/assets/manifest.ts
-export const snakeAssets = {
-  head: '/games/snake/head.png',
-  body: '/games/snake/body.png',
-  food: '/games/snake/food.png',
-} as const
-
-// pixi/games/snake/scene.ts
-import { Assets } from 'pixi.js'
-import { snakeAssets } from './assets/manifest'
-
-export const snakeScene: SceneDescriptor = {
-  async setup({ app }) {
-    // Загрузка только ассетов змейки
-    const textures = await Assets.load(Object.values(snakeAssets))
-
-    const root = new Container()
-    // ... используем textures
-    return root
-  },
-}
-```
-
-Статические файлы кладутся в `public/games/<gameName>/`:
-```
-public/
-└── games/
-    ├── snake/
-    │   ├── head.png
-    │   └── food.png
-    └── tetris/
-        └── blocks.png
-```
-
----
-
-## React ↔ Pixi: обмен данными через Zustand
-
-Zustand-стор — единственный канал связи между React UI и Pixi-логикой.
-
-### Из React (через хук):
-
-```tsx
-import { useGameStore } from '@/stores/gameStore'
-
-function ScoreDisplay() {
-  const score = useGameStore((s) => s.score)
-  return <Text>{score}</Text>
-}
-```
-
-### Из Pixi (напрямую, без хуков):
-
-```ts
-import { useGameStore } from '@/stores/gameStore'
-
-// Чтение
-const { score } = useGameStore.getState()
-
-// Запись
-useGameStore.getState().addScore(10)
-
-// Подписка на изменения
-const unsubscribe = useGameStore.subscribe((state) => {
-  if (state.isPaused) app.ticker.stop()
-  else app.ticker.start()
-})
-```
-
-### Поток данных:
+## 3. Потоки данных
 
 ```
-┌──────────┐     getState() / subscribe()     ┌──────────┐
-│          │ ◄──────────────────────────────── │          │
-│  React   │          Zustand Store            │  PixiJS  │
-│   UI     │ ────────────────────────────────► │  Scene   │
-│          │     setState() (actions)          │          │
-└──────────┘                                   └──────────┘
+          состояние движка (scene, loading, paused)
+Engine ──────────────────────────────────────────────▶ React UI   (useEngineState)
+React UI ── engine.pause() / resume() / goto() ─────▶ Engine     (useEngine)
+
+Scene ── useXStore.getState().action() ─▶ zustand store ─▶ React UI (useXStore(selector))
+React UI ── action() ─▶ zustand store ─▶ Scene (store.subscribe в enter + addDisposer, или чтение в update)
 ```
 
----
+Стор игры — единственный мост Pixi ↔ React. В нём лежит то, что надо *показать* или *пережить смену сцены*
+(счёт, жизни, валюта, апгрейды), но не позиции тысяч врагов — их держит сцена/симуляция.
 
-## Добавление новой игры — чеклист
+## 4. Цикл
 
-1. Создать папку `src/pixi/games/<gameName>/`
-2. Создать `scene.ts` с `SceneDescriptor`
-3. Создать `index.ts` с barrel-экспортом сцены
-4. Если нужны ассеты — создать `assets/manifest.ts` и папку `public/games/<gameName>/`
-5. Создать страницу `src/pages/<GameName>Page.tsx` с `<PixiCanvas scene={...} />`
-6. Добавить маршрут в `src/app/router.tsx`
+- `update(dt)` — каждый кадр, `dt` в секундах, переменный. Визуал, анимации, опрос клавиатуры.
+- `fixedUpdate(dt)` — ровно 60 раз в секунду (накопитель, максимум 5 шагов за кадр). Физика, движение врагов,
+  всё, что должно вести себя одинаково на 60 и 144 Гц.
+- `dt` ограничен 0.1 с: после лага игра не «прыгает».
+- `engine.pause()` останавливает `update`/`fixedUpdate`, рендер продолжается (видно меню паузы).
+- Приложение ушло в фон → тикер останавливается, у сцены вызывается `onHidden()` (геймплей ставит паузу,
+  инкременталка запоминает время), при возврате — `onVisible()`.
 
----
+## 5. Экран
 
-## Важные правила
+Сцены живут в координатах мира (дизайн-разрешение из `viewport`), не зная про реальные пиксели и DPR.
+- `fit` — видно ровно `width×height`, по краям поля. Для suika/plinko/пазлов: поле одинаково на всех устройствах.
+- `expand` — гарантированно видно `width×height`, на широких/высоких экранах — больше мира.
+  Для survivors и фонов. Сцена обязана раскладываться в `resize()`.
+- `resolution` ограничен 2: на телефонах с DPR 3 это почти вдвое меньше пикселей без видимой разницы.
 
-1. **Каждая игра изолирована** в `pixi/games/<name>/` — свои сущности, системы, ассеты
-2. **Игры не импортируют друг друга** — только `pixi/shared/`
-3. **Ассеты грузятся лениво** внутри `setup()` через `Assets.load()`
-4. **Весь UI (меню, HUD, настройки) — React + Chakra UI**, не на Pixi-canvas
-5. **Zustand — единственный мост** между React и Pixi
-6. **Одна сцена в один момент** — PixiCanvas монтируется/размонтируется при навигации
+## 6. Почему это самый удобный вариант
+
+| Вариант | Плюсы | Почему не он |
+|---|---|---|
+| Вся игра в одной функции `(app) => {}` (как было) | Минимум кода | Нет остановки, утечки, нет загрузки с прогрессом, всё копируется между играми. |
+| `@pixi/react` (декларативный Pixi в JSX) | Знакомо React-разработчику | React-реконсилиация на каждый кадр для сотен объектов — медленно и неестественно для игрового цикла. Хорош для UI-подобных сцен, плох для survivors. |
+| Phaser | Всё из коробки | Свой цикл, свои сцены, свой UI — React сбоку. Перенос существующих Pixi-наработок = переписывание. |
+| ECS-фреймворк (bitecs и т.п.) | Масштабируется до огромных симуляций | Избыточен для инкременталки/plinko. Если survivors упрётся в производительность — ECS можно поставить *внутри* одной сцены, архитектура этого не запрещает. |
+| **Хост + Engine + сцены + стор-мост (этот)** | Один канвас на всё время, чистая остановка игр, загрузка как часть перехода, React для UI, императивный Pixi для геймплея, явные границы, проверяемые линтером | Свой движковый слой надо поддерживать — но это ~1000 строк с комментариями, и он не растёт с количеством игр. |
+
+Ключевое свойство: **добавление игры не трогает движок, а изменение движка не ломает игры** — они общаются
+только через `GameDefinition` и `GameContext`. Поэтому один репозиторий спокойно держит пачку прототипов,
+а в релиз уходит одна игра (`VITE_GAME=<id> yarn build`), остальные лежат в неподгружаемых чанках.
+
+## 7. Путь на платформы
+
+Подготовлено сейчас: `base: './'` в Vite (сборка работает из `file://`), слой `platform/` (игры не трогают
+`localStorage`/Capacitor/Electron напрямую), safe-area, `touch-action: none`, пауза при уходе в фон, DPR ≤ 2.
+
+Когда дойдёт дело:
+- **Capacitor:** `yarn add @capacitor/core @capacitor/cli` → `npx cap init` (webDir: `dist`) →
+  `npx cap add android` / `ios` → `yarn build && npx cap sync`. В `createPlatform()` подключить
+  `@capacitor/preferences` вместо `localStorage` (iOS может чистить хранилище WebView), по желанию — haptics, status bar.
+- **Electron:** отдельная папка `electron/` с `main.ts`, который открывает `dist/index.html`; сборка через
+  electron-builder. Сохранения — в `app.getPath('userData')` через preload-мост, реализация — в `createPlatform()`.
+
+## 8. Что сознательно не сделано (и когда добавлять)
+
+- **Звук.** Когда понадобится: `engine/audio/AudioService.ts` поверх `@pixi/sound` (уже в зависимостях),
+  добавить в `GameContext`. Звуки грузятся тем же манифестом.
+- **Стек сцен / оверлеи в Pixi.** Паузы и попапы — в React. Если понадобится Pixi-оверлей поверх сцены
+  (например, сундук с частицами) — добавить в SceneManager `push/pop`.
+- **Физика.** Не в движке: у plinko и survivors разная. Ставится в игру, шаг — в `fixedUpdate`.
+- **Интерполяция между fixed-шагами.** Нужна, если движение в `fixedUpdate` заметно дёргается на 120+ Гц.
+- **Тесты.** `logic/` специально чистый — первым делом тестировать его (vitest).
